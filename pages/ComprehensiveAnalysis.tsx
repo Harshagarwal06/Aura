@@ -1,74 +1,87 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GoogleGenAI, Type } from "@google/genai";
+import { ArrowUpTrayIcon, VideoCameraIcon } from '@heroicons/react/24/solid';
 import { useAppContext } from '../context/AppContext';
-import { ArrowUpTrayIcon, VideoCameraIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/solid';
+import { analyzeVideoFile } from '../analysis/videoAnalyzer';
+import { VideoAnalysisReport, TimelineHighlight } from '../types';
+import type { ComprehensiveReport } from '../types';
 
-const createAnalysisPrompt = (videoGoal: string) => `
-You are an expert analyst AI named Aura. Your task is to conduct a comprehensive analysis of a user's uploaded video, considering its stated goal. The user has provided the following goal for their video: "${videoGoal}".
+const formatPercent = (value: number) => `${Math.round(value * 100)}%`;
 
-Please analyze both the video and audio tracks of this hypothetical video and generate a detailed report. Your report MUST be a single JSON object conforming to the schema provided. Do not include any markdown formatting or explanatory text outside the JSON.
+const formatHighlightTime = (highlight: TimelineHighlight) => {
+  if (highlight.start === highlight.end) {
+    return `${highlight.start.toFixed(1)}s`;
+  }
+  return `${highlight.start.toFixed(1)}s - ${highlight.end.toFixed(1)}s`;
+};
 
-Your analysis should be insightful, objective, and provide actionable recommendations.
+const buildComprehensiveReport = (analysis: VideoAnalysisReport, goal: string): ComprehensiveReport => {
+  const { presenceScore, bestTrait, needsImprovement, skills, highlights, voice } = analysis;
+  const skillKeyMap: Record<string, keyof typeof skills> = {
+    'Posture & Space': 'posture',
+    'Eye Contact': 'eyeContact',
+    'Gestures / Open Hands': 'gestures',
+    'Calm Hands': 'calmHands',
+    'Smile / Warmth': 'smile',
+    'Opening Presence': 'openingPresence',
+    Voice: 'voice',
+  };
+  const weakestKey = skillKeyMap[needsImprovement.name] ?? 'posture';
 
-The required JSON output structure is:
-- executiveSummary: A one-paragraph overview of the video's content and your most important findings.
-- audioAnalysis:
-  - transcriptSummary: A summary of the main topics discussed. Do not provide a full transcript.
-  - keyPoints: A bulleted list (array of strings) of the 3-5 most important ideas, decisions, or conclusions from the audio.
-  - vocalDelivery: A brief analysis of the speaker's tone (e.g., confident, hesitant), pace, and clarity.
-- videoAnalysis:
-  - visualSummary: A description of the main subjects, setting, and key visual events.
-  - bodyLanguageAndSentiment: An analysis of the primary subject's body language and expressions.
-  - keyVisualMoments: An array of objects, each with a 'timestamp' (e.g., "[~0:30]") and 'description' of a significant visual event.
-- overallInsightsAndRecommendations: An array of 3-5 actionable insights or recommendations for improvement, based on the video's stated goal.
-`;
+  const goalText = goal.trim() ? goal.trim() : 'video';
 
-const responseSchema = {
-    type: Type.OBJECT,
-    properties: {
-        executiveSummary: { type: Type.STRING },
-        audioAnalysis: {
-            type: Type.OBJECT,
-            properties: {
-                transcriptSummary: { type: Type.STRING },
-                keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-                vocalDelivery: { type: Type.STRING },
-            }
-        },
-        videoAnalysis: {
-            type: Type.OBJECT,
-            properties: {
-                visualSummary: { type: Type.STRING },
-                bodyLanguageAndSentiment: { type: Type.STRING },
-                keyVisualMoments: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            timestamp: { type: Type.STRING },
-                            description: { type: Type.STRING },
-                        }
-                    }
-                },
-            }
-        },
-        overallInsightsAndRecommendations: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING }
-        },
-    }
+  const execSummary = `Your ${goalText} earned a ${presenceScore}/100 presence score. ${bestTrait.name} stood out as your strongest area, while ${needsImprovement.name.toLowerCase()} needs the most attention.`;
+
+  const audioAnalysis = {
+    transcriptSummary: `Delivery maintained an estimated pace of ${voice.paceWpm} WPM with ${voice.quietStart ? 'a quiet pause before the opening.' : 'an immediate start.'}`,
+    keyPoints: [
+      `Estimated vocal energy at ${(voice.energy ?? 0) > 0 ? Math.round((voice.energy ?? 0) * 100) : 0}% of the target range.`,
+      voice.fillerPerMin > 0 ? `Approximate filler usage: ${voice.fillerPerMin}/min.` : 'No noticeable filler-word spikes detected in the audio energy.',
+      `Voice active for ${voice.speakingRatio != null ? formatPercent(voice.speakingRatio) : 'a healthy share'} of the session timeline.`,
+    ],
+    vocalDelivery: `${voice.comment}${voice.quietStart ? ' Consider speaking right away to hook the audience.' : ''}`,
+  };
+
+  const videoAnalysis = {
+    visualSummary: `Posture scored ${skills.posture.score}/100 with ${formatPercent(skills.posture.percentGood)} upright alignment; gestures landed at ${skills.gestures.score}/100 and were visible ${formatPercent(skills.gestures.percentGood)} of the time.`,
+    bodyLanguageAndSentiment: `Eye contact rated ${skills.eyeContact.score}/100, calm hands ${skills.calmHands.score}/100, and smile warmth ${skills.smile.score}/100—together painting a ${skills.smile.score > 70 ? 'friendly' : 'neutral'} on-camera presence.`,
+    keyVisualMoments: highlights.slice(0, 6).map((highlight) => ({
+      timestamp: formatHighlightTime(highlight),
+      description: `${highlight.tag}: ${highlight.advice}`,
+    })),
+  };
+
+  const insights: string[] = [
+    `Double down on ${bestTrait.name.toLowerCase()}—it is your signature strength right now.`,
+    `Lift ${needsImprovement.name.toLowerCase()} by applying the coaching cues in the report (${skills[weakestKey]?.coachComment ?? 'focus on the fundamentals'}).`,
+    skills.openingPresence.score < 80
+      ? 'Rehearse the first five seconds until your posture, eye contact, and voice align from the start.'
+      : 'Your opening presence is strong—keep leading with that confident stance.',
+    voice.paceWpm > 180
+      ? 'Dial back the pace slightly to give important ideas room to land.'
+      : voice.paceWpm < 120
+      ? 'Add a touch more pace to maintain energy.'
+      : 'Maintain the conversational pace—it supports clarity.',
+  ];
+
+  return {
+    executiveSummary: execSummary,
+    audioAnalysis,
+    videoAnalysis,
+    overallInsightsAndRecommendations: insights,
+  };
 };
 
 const ComprehensiveAnalysis: React.FC = () => {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoGoal, setVideoGoal] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const navigate = useNavigate();
-  const { setComprehensiveReport } = useAppContext();
+  const { setComprehensiveReport, setVideoReport } = useAppContext();
 
   const handleFileChange = (files: FileList | null) => {
     if (files && files[0]) {
@@ -102,24 +115,19 @@ const ComprehensiveAnalysis: React.FC = () => {
       return;
     }
     setIsAnalyzing(true);
+    setProgress(0);
     setError(null);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      const prompt = createAnalysisPrompt(videoGoal);
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: responseSchema,
-        },
+      const { report } = await analyzeVideoFile(videoFile, {
+        onProgress: (value) => setProgress(value),
       });
-      const report = JSON.parse(response.text);
-      setComprehensiveReport(report);
+      setVideoReport(report);
+      const comprehensive = buildComprehensiveReport(report, videoGoal);
+      setComprehensiveReport(comprehensive);
       navigate('/comprehensive-report');
     } catch (err) {
-      console.error("Error analyzing video:", err);
-      setError("Sorry, something went wrong during the analysis. Please try again.");
+      console.error('Error analyzing video:', err);
+      setError('Sorry, something went wrong during the analysis. Please try again.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -133,7 +141,14 @@ const ComprehensiveAnalysis: React.FC = () => {
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
         </svg>
         <p className="text-xl text-slate-200 mt-4">Aura is generating your report...</p>
-        <p className="text-sm text-slate-400">This may take a moment.</p>
+        <p className="text-sm text-slate-400 mb-4">This may take a moment.</p>
+        <div className="w-64 h-2 bg-slate-700 rounded-full overflow-hidden">
+          <div
+            className="h-full bg-indigo-500 transition-all duration-300"
+            style={{ width: `${Math.round(progress * 100)}%` }}
+          />
+        </div>
+        <p className="text-xs text-slate-500 mt-2">{Math.round(progress * 100)}% complete</p>
       </div>
     );
   }
