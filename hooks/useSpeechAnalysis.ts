@@ -14,17 +14,18 @@ const FILLER_WORD_REGEX = new RegExp(
 );
 
 const generateSpeechReport = (
-  finalTranscript: string, 
-  fillerWords: { t: number, word: string }[], 
-  startTime: number | null, 
+  finalTranscript: string,
+  fillerWords: { t: number, word: string }[],
+  startTime: number | null,
+  stopTime: number | null,
   paceTimeline: ChartDataPoint[],
   topicKeywords: string[]
 ): Omit<AnalysisReport, 'postureScore'> => {
     const fullText = finalTranscript.trim();
     const words = fullText.split(/\s+/).filter(Boolean);
-    const totalWords = words.length;
-    const elapsedTimeMinutes = ((performance.now() - (startTime ?? 0)) / 1000) / 60;
-    const avgWPM = elapsedTimeMinutes > 0 ? Math.round(totalWords / elapsedTimeMinutes) : 0;
+    const elapsedMs = startTime != null && stopTime != null ? Math.max(0, stopTime - startTime) : 0;
+    const elapsedTimeMinutes = elapsedMs > 0 ? (elapsedMs / 1000) / 60 : 0;
+    const avgWPM = elapsedTimeMinutes > 0 ? Math.round(words.length / elapsedTimeMinutes) : 0;
 
     const phraseCounts = new Map<string, number>();
     if (words.length >= 3) {
@@ -67,30 +68,35 @@ export const useSpeechAnalysis = () => {
   const [liveWPM, setLiveWPM] = useState(0);
 
   const providerRef = useRef<ISpeechProvider | null>(null);
-  
+
   const finalTranscriptRef = useRef('');
   const lastWordCountRef = useRef(0);
   const startTimeRef = useRef<number | null>(null);
+  const stopTimeRef = useRef<number | null>(null);
   const paceIntervalRef = useRef<number | null>(null);
   const fillerWordsRef = useRef<{ t: number, word: string }[]>([]);
   const paceTimelineRef = useRef<ChartDataPoint[]>([]);
-  
+  const transcriptForWpmRef = useRef('');
+
   const processTranscript = useCallback((result: string, isFinal: boolean) => {
-    if (isFinal) {
-      finalTranscriptRef.current += result + ' ';
-      setTranscript(finalTranscriptRef.current);
-      
-      const matches = result.toLowerCase().match(FILLER_WORD_REGEX);
+    const trimmed = result.trim();
+
+    if (isFinal && trimmed) {
+      finalTranscriptRef.current = `${finalTranscriptRef.current}${trimmed} `;
+
+      const matches = trimmed.toLowerCase().match(FILLER_WORD_REGEX);
       if (matches) {
         const timestamp = performance.now() - (startTimeRef.current ?? 0);
         for (const match of matches) {
           fillerWordsRef.current.push({ t: timestamp / 1000, word: match });
         }
-        setLiveFillerCount(prev => prev + matches.length);
+        setLiveFillerCount((prev) => prev + matches.length);
       }
-    } else {
-      setTranscript(finalTranscriptRef.current + result);
     }
+
+    const combined = `${finalTranscriptRef.current}${isFinal ? '' : result}`.trim();
+    transcriptForWpmRef.current = combined;
+    setTranscript(combined);
   }, []);
 
   useEffect(() => {
@@ -118,22 +124,24 @@ export const useSpeechAnalysis = () => {
 
     finalTranscriptRef.current = '';
     lastWordCountRef.current = 0;
+    transcriptForWpmRef.current = '';
     fillerWordsRef.current = [];
     paceTimelineRef.current = [];
     setLiveFillerCount(0);
     setLiveWPM(0);
     setTranscript('');
     startTimeRef.current = performance.now();
+    stopTimeRef.current = null;
 
     providerRef.current?.start();
-    
+
     if (paceIntervalRef.current) {
         clearInterval(paceIntervalRef.current);
     }
     const PACE_INTERVAL_MS = 5000;
     paceIntervalRef.current = window.setInterval(() => {
         if (!startTimeRef.current) return;
-        const currentWordCount = finalTranscriptRef.current.trim().split(/\s+/).filter(Boolean).length;
+        const currentWordCount = transcriptForWpmRef.current.split(/\s+/).filter(Boolean).length;
         const wordsInInterval = currentWordCount - lastWordCountRef.current;
         lastWordCountRef.current = currentWordCount;
         const currentWPM = Math.round(wordsInInterval * (60000 / PACE_INTERVAL_MS));
@@ -149,8 +157,9 @@ export const useSpeechAnalysis = () => {
   }, [isListening]);
 
   const stopListening = useCallback((topicKeywords: string[]): Omit<AnalysisReport, 'postureScore'> => {
+    stopTimeRef.current = performance.now();
     providerRef.current?.stop();
-    
+
     if (paceIntervalRef.current) {
         clearInterval(paceIntervalRef.current);
         paceIntervalRef.current = null;
@@ -160,6 +169,7 @@ export const useSpeechAnalysis = () => {
       finalTranscriptRef.current,
       fillerWordsRef.current,
       startTimeRef.current,
+      stopTimeRef.current,
       paceTimelineRef.current,
       topicKeywords
     );
