@@ -1,124 +1,129 @@
-import { useState, useRef, useCallback, RefObject } from 'react';
+import { useState, useRef, useCallback, RefObject, useEffect } from 'react';
+import { BodyLanguageSessionAnalyzer, createFeedbackMessage, LandmarkLike, DEFAULT_VOICE_METRICS } from '../analysis/bodyLanguage';
+import { getPoseLandmarker, getFaceLandmarker } from '../analysis/visionLoader';
 
-// Simplified analysis constants
-const CENTER_THRESHOLD = 0.1; // 10% deviation from center allowed
-const MOVEMENT_THRESHOLD = 2; // Pixel difference threshold for movement detection
-const GOOD_POSTURE_SCORE_INCREMENT = 0.1;
-const BAD_POSTURE_SCORE_DECREMENT = 0.2;
+const MIN_READY_STATE = HTMLMediaElement.HAVE_CURRENT_DATA;
+
+const pickLandmarkGroup = (result: unknown, primaryKey: string, fallbackKey: string): LandmarkLike[] | undefined => {
+  if (!result || typeof result !== 'object') {
+    return undefined;
+  }
+  const record = result as Record<string, unknown>;
+  const primary = record[primaryKey];
+  if (Array.isArray(primary) && primary.length > 0) {
+    return primary[0] as LandmarkLike[];
+  }
+  const fallback = record[fallbackKey];
+  if (Array.isArray(fallback) && fallback.length > 0) {
+    return fallback[0] as LandmarkLike[];
+  }
+  return undefined;
+};
 
 export const usePostureAnalysis = (videoRef: RefObject<HTMLVideoElement>) => {
   const [postureFeedback, setPostureFeedback] = useState('Not tracking');
-  const [postureScore, setPostureScore] = useState(85); // Start with a decent score
-  
-  const analysisFrameRef = useRef<number | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const lastCenterRef = useRef<{ x: number, y: number } | null>(null);
+  const analyzerRef = useRef<BodyLanguageSessionAnalyzer>(new BodyLanguageSessionAnalyzer());
+  const animationFrameRef = useRef<number | null>(null);
+  const startTimestampRef = useRef<number | null>(null);
+  const lastReportRef = useRef<ReturnType<BodyLanguageSessionAnalyzer['buildReport']> | null>(null);
+  const poseLandmarkerRef = useRef<Awaited<ReturnType<typeof getPoseLandmarker>> | null>(null);
+  const faceLandmarkerRef = useRef<Awaited<ReturnType<typeof getFaceLandmarker>> | null>(null);
+  const loadingModelsRef = useRef(false);
 
-  const analyzeFrame = useCallback(() => {
-    if (!videoRef.current || videoRef.current.paused || videoRef.current.ended) {
-      analysisFrameRef.current = requestAnimationFrame(analyzeFrame);
+  const ensureModelsLoaded = useCallback(async () => {
+    if (poseLandmarkerRef.current && faceLandmarkerRef.current) {
       return;
     }
-    
-    if (!canvasRef.current) {
-        canvasRef.current = document.createElement('canvas');
+    if (loadingModelsRef.current) {
+      return;
     }
+    loadingModelsRef.current = true;
+    try {
+      const [pose, face] = await Promise.all([getPoseLandmarker(), getFaceLandmarker()]);
+      poseLandmarkerRef.current = pose;
+      faceLandmarkerRef.current = face;
+    } catch (error) {
+      console.error('Failed to load vision models', error);
+      setPostureFeedback('Camera analysis unavailable. Please refresh and try again.');
+    } finally {
+      loadingModelsRef.current = false;
+    }
+  }, []);
 
+  const analyzeFrame = useCallback(() => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-
-    if (!ctx) {
-        analysisFrameRef.current = requestAnimationFrame(analyzeFrame);
-        return;
-    }
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    if (canvas.width === 0 || canvas.height === 0) {
-        analysisFrameRef.current = requestAnimationFrame(analyzeFrame);
-        return;
+    if (!video || !poseLandmarkerRef.current || !faceLandmarkerRef.current) {
+      animationFrameRef.current = requestAnimationFrame(analyzeFrame);
+      return;
     }
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // This is a very simplified simulation of posture analysis.
-    // A real implementation would use a model like PoseNet.
-    // Here, we find the "center of mass" of non-background pixels.
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-    let totalX = 0, totalY = 0, count = 0;
-
-    // Sample a subset of pixels for performance
-    for (let i = 0; i < data.length; i += 4 * 20) { // Sample every 20th pixel
-        // A simple skin-tone detection heuristic (very rough)
-        const r = data[i];
-        const g = data[i+1];
-        const b = data[i+2];
-        if (r > 95 && g > 40 && b > 20 && r > g && r > b && Math.abs(r - g) > 15) {
-            const x = (i / 4) % canvas.width;
-            const y = Math.floor((i / 4) / canvas.width);
-            totalX += x;
-            totalY += y;
-            count++;
-        }
+    if (video.readyState < MIN_READY_STATE || video.videoWidth === 0 || video.videoHeight === 0) {
+      animationFrameRef.current = requestAnimationFrame(analyzeFrame);
+      return;
     }
 
-    if (count > 100) { // Only analyze if we have enough points
-        const centerX = totalX / count;
-        const normalizedCenterX = centerX / canvas.width;
-        let feedback = "Good";
-        let isGoodPosture = true;
+    const now = performance.now();
+    if (startTimestampRef.current === null) {
+      startTimestampRef.current = now;
+    }
+    const timestampSec = (now - startTimestampRef.current) / 1000;
 
-        if (normalizedCenterX < 0.5 - CENTER_THRESHOLD) {
-            feedback = "Leaning Left";
-            isGoodPosture = false;
-        } else if (normalizedCenterX > 0.5 + CENTER_THRESHOLD) {
-            feedback = "Leaning Right";
-            isGoodPosture = false;
-        }
-
-        if (lastCenterRef.current) {
-            const movement = Math.abs(centerX - lastCenterRef.current.x);
-            if (movement > MOVEMENT_THRESHOLD * (canvas.width/100) ) { // Movement relative to width
-                feedback = "Swaying";
-                isGoodPosture = false;
-            }
-        }
-        
-        setPostureFeedback(feedback);
-        lastCenterRef.current = { x: centerX, y: totalY/count };
-        
-        // Update score
-        setPostureScore(prev => Math.min(100, Math.max(0, prev + (isGoodPosture ? GOOD_POSTURE_SCORE_INCREMENT : -BAD_POSTURE_SCORE_DECREMENT))));
+    try {
+      const poseResult = poseLandmarkerRef.current.detectForVideo(video, now);
+      const faceResult = faceLandmarkerRef.current.detectForVideo(video, now);
+      const poseLandmarks = pickLandmarkGroup(poseResult, 'landmarks', 'poseLandmarks');
+      const faceLandmarks = pickLandmarkGroup(faceResult, 'faceLandmarks', 'landmarks');
+      const summary = analyzerRef.current.processFrame(
+        poseLandmarks,
+        faceLandmarks,
+        video.videoWidth,
+        video.videoHeight,
+        timestampSec,
+      );
+      setPostureFeedback(createFeedbackMessage(summary));
+    } catch (error) {
+      console.error('Live posture analysis failed', error);
     }
 
-
-    analysisFrameRef.current = requestAnimationFrame(analyzeFrame);
+    animationFrameRef.current = requestAnimationFrame(analyzeFrame);
   }, [videoRef]);
 
-  const startPostureAnalysis = useCallback(() => {
-    if (analysisFrameRef.current) {
-        cancelAnimationFrame(analysisFrameRef.current);
+  const startPostureAnalysis = useCallback(async () => {
+    await ensureModelsLoaded();
+    analyzerRef.current.reset();
+    lastReportRef.current = null;
+    startTimestampRef.current = null;
+    setPostureFeedback('Tracking posture...');
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
     }
-    setPostureFeedback('Good');
-    analysisFrameRef.current = requestAnimationFrame(analyzeFrame);
-  }, [analyzeFrame]);
+    animationFrameRef.current = requestAnimationFrame(analyzeFrame);
+  }, [analyzeFrame, ensureModelsLoaded]);
 
   const stopPostureAnalysis = useCallback(() => {
-    if (analysisFrameRef.current) {
-      cancelAnimationFrame(analysisFrameRef.current);
-      analysisFrameRef.current = null;
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
     }
     setPostureFeedback('Not tracking');
   }, []);
 
   const getPostureReport = useCallback(() => {
-      return {
-          postureScore: Math.round(postureScore)
+    if (!lastReportRef.current) {
+      lastReportRef.current = analyzerRef.current.buildReport(DEFAULT_VOICE_METRICS);
+    }
+    return {
+      postureScore: lastReportRef.current.skills.posture.score,
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
-  }, [postureScore]);
+    };
+  }, []);
 
   return { postureFeedback, startPostureAnalysis, stopPostureAnalysis, getPostureReport };
 };
