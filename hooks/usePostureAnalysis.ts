@@ -4,22 +4,6 @@ import { getPoseLandmarker, getFaceLandmarker } from '../analysis/visionLoader';
 
 const MIN_READY_STATE = HTMLMediaElement.HAVE_CURRENT_DATA;
 
-const pickLandmarkGroup = (result: unknown, primaryKey: string, fallbackKey: string): LandmarkLike[] | undefined => {
-  if (!result || typeof result !== 'object') {
-    return undefined;
-  }
-  const record = result as Record<string, unknown>;
-  const primary = record[primaryKey];
-  if (Array.isArray(primary) && primary.length > 0) {
-    return primary[0] as LandmarkLike[];
-  }
-  const fallback = record[fallbackKey];
-  if (Array.isArray(fallback) && fallback.length > 0) {
-    return fallback[0] as LandmarkLike[];
-  }
-  return undefined;
-};
-
 export const usePostureAnalysis = (videoRef: RefObject<HTMLVideoElement>) => {
   const [postureFeedback, setPostureFeedback] = useState('Not tracking');
   const analyzerRef = useRef<BodyLanguageSessionAnalyzer>(new BodyLanguageSessionAnalyzer());
@@ -71,8 +55,8 @@ export const usePostureAnalysis = (videoRef: RefObject<HTMLVideoElement>) => {
     try {
       const poseResult = poseLandmarkerRef.current.detectForVideo(video, now);
       const faceResult = faceLandmarkerRef.current.detectForVideo(video, now);
-      const poseLandmarks = pickLandmarkGroup(poseResult, 'landmarks', 'poseLandmarks');
-      const faceLandmarks = pickLandmarkGroup(faceResult, 'faceLandmarks', 'landmarks');
+      const poseLandmarks = (poseResult?.landmarks?.[0] as LandmarkLike[] | undefined) ?? undefined;
+      const faceLandmarks = (faceResult?.faceLandmarks?.[0] as LandmarkLike[] | undefined) ?? undefined;
       const summary = analyzerRef.current.processFrame(
         poseLandmarks,
         faceLandmarks,
