@@ -94,10 +94,21 @@ const ComprehensiveAnalysis: React.FC = () => {
       }
     }
   };
-  
-  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
-  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
-  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => { e.preventDefault(); e.stopPropagation(); };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  const handleDragLeave = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  const handleDragOver = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
   const handleDrop = (e: React.DragEvent<HTMLLabelElement>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -107,16 +118,24 @@ const ComprehensiveAnalysis: React.FC = () => {
 
   const handleAnalyze = async () => {
     if (!videoFile) {
-      setError("Please select a video file first.");
+      setError('Please select a video file first.');
       return;
     }
     if (!videoGoal.trim()) {
-      setError("Please describe the goal of your video.");
+      setError('Please describe the goal of your video.');
       return;
     }
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      setError('Missing Gemini API key. Please set VITE_GEMINI_API_KEY.');
+      return;
+    }
+
     setIsAnalyzing(true);
     setProgress(0);
     setError(null);
+
     try {
       const { report } = await analyzeVideoFile(videoFile, {
         onProgress: (value) => setProgress(value),
@@ -160,41 +179,52 @@ const ComprehensiveAnalysis: React.FC = () => {
 
       <div className="space-y-6">
         <div>
-            <label 
-                htmlFor="video-upload"
-                className={`flex flex-col items-center justify-center w-full h-52 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800 hover:bg-slate-700/50 transition-colors ${isDragging ? 'border-indigo-500' : ''}`}
-                onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}
-            >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <ArrowUpTrayIcon className="w-10 h-10 mb-3 text-slate-400" />
-                    <p className="mb-2 text-sm text-slate-400"><span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop</p>
-                    <p className="text-xs text-slate-500">MP4, MOV, or WEBM (max 500MB)</p>
-                </div>
-                <input id="video-upload" type="file" className="hidden" accept="video/mp4,video/quicktime,video/webm" onChange={(e) => handleFileChange(e.target.files)} />
-            </label>
-            {videoFile && (
-                <div className="bg-slate-700/50 mt-4 p-3 rounded-lg text-left flex items-center space-x-3 animate-slide-in-right">
-                    <VideoCameraIcon className="h-6 w-6 text-green-400 flex-shrink-0" />
-                    <div>
-                        <p className="text-sm font-medium text-slate-200">{videoFile.name}</p>
-                    </div>
-                </div>
-            )}
-        </div>
-        
-        <div className="text-left">
-            <label htmlFor="video-goal" className="block text-sm font-medium text-slate-300 mb-2">
-                What is the primary goal of this video?
-            </label>
-            <textarea
-                id="video-goal"
-                rows={3}
-                value={videoGoal}
-                onChange={(e) => setVideoGoal(e.target.value)}
-                placeholder="e.g., A user testing session for a new app."
-                className="w-full bg-slate-700 border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                required
+          <label
+            htmlFor="video-upload"
+            className={`flex flex-col items-center justify-center w-full h-52 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800 hover:bg-slate-700/50 transition-colors ${isDragging ? 'border-indigo-500' : ''}`}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+              <ArrowUpTrayIcon className="w-10 h-10 mb-3 text-slate-400" />
+              <p className="mb-2 text-sm text-slate-400">
+                <span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop
+              </p>
+              <p className="text-xs text-slate-500">MP4, MOV, or WEBM (max 500MB)</p>
+            </div>
+            <input
+              id="video-upload"
+              type="file"
+              className="hidden"
+              accept="video/mp4,video/quicktime,video/webm"
+              onChange={(e) => handleFileChange(e.target.files)}
             />
+          </label>
+          {videoFile && (
+            <div className="bg-slate-700/50 mt-4 p-3 rounded-lg text-left flex items-center space-x-3 animate-slide-in-right">
+              <VideoCameraIcon className="h-6 w-6 text-green-400 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-slate-200">{videoFile.name}</p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="text-left">
+          <label htmlFor="video-goal" className="block text-sm font-medium text-slate-300 mb-2">
+            What is the primary goal of this video?
+          </label>
+          <textarea
+            id="video-goal"
+            rows={3}
+            value={videoGoal}
+            onChange={(e) => setVideoGoal(e.target.value)}
+            placeholder="e.g., A user testing session for a new app."
+            className="w-full bg-slate-700 border-slate-600 rounded-md py-2 px-3 text-white placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+            required
+          />
         </div>
 
         {error && <p className="text-rose-400 text-sm">{error}</p>}

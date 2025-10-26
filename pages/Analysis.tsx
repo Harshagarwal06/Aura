@@ -52,9 +52,11 @@ const Analysis: React.FC = () => {
       setError('Please select a video file first.');
       return;
     }
+
     setIsAnalyzing(true);
     setProgress(0);
     setError(null);
+
     try {
       const { report } = await analyzeVideoFile(videoFile, {
         onProgress: (value) => setProgress(value),
@@ -91,46 +93,54 @@ const Analysis: React.FC = () => {
 
   return (
     <div className="max-w-2xl mx-auto text-center animate-fade-in-up">
-        <h1 className="text-3xl font-bold text-slate-100 mb-2">Video Performance Analysis</h1>
-        <p className="text-slate-400 mb-8">Upload a recorded speech and get a detailed breakdown of your public speaking skills.</p>
-        
-        <div className="space-y-6">
-            <label 
-                htmlFor="video-upload"
-                className={`flex flex-col items-center justify-center w-full h-64 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800 hover:bg-slate-700/50 transition-colors ${isDragging ? 'border-indigo-500' : ''}`}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-            >
-                <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <ArrowUpTrayIcon className="w-10 h-10 mb-3 text-slate-400" />
-                    <p className="mb-2 text-sm text-slate-400"><span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop</p>
-                    <p className="text-xs text-slate-500">MP4, MOV, or WEBM (max 500MB)</p>
-                </div>
-                <input id="video-upload" type="file" className="hidden" accept="video/mp4,video/quicktime,video/webm" onChange={(e) => handleFileChange(e.target.files)} />
-            </label>
+      <h1 className="text-3xl font-bold text-slate-100 mb-2">Video Performance Analysis</h1>
+      <p className="text-slate-400 mb-8">Upload a recorded speech and get a detailed breakdown of your public speaking skills.</p>
 
-            {videoFile && (
-                <div className="bg-slate-700/50 p-3 rounded-lg text-left flex items-center space-x-3 animate-slide-in-right">
-                    <VideoCameraIcon className="h-6 w-6 text-green-400 flex-shrink-0" />
-                    <div>
-                        <p className="text-sm font-medium text-slate-200">{videoFile.name}</p>
-                        <p className="text-xs text-slate-400">{(videoFile.size / 1024 / 1024).toFixed(2)} MB</p>
-                    </div>
-                </div>
-            )}
-            
-            {error && <p className="text-rose-400 text-sm">{error}</p>}
-            
-            <button
-                onClick={handleAnalyze}
-                disabled={!videoFile || isAnalyzing}
-                className="w-full bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-indigo-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
-            >
-                Analyze My Performance
-            </button>
-        </div>
+      <div className="space-y-6">
+        <label
+          htmlFor="video-upload"
+          className={`flex flex-col items-center justify-center w-full h-64 border-2 border-slate-600 border-dashed rounded-lg cursor-pointer bg-slate-800 hover:bg-slate-700/50 transition-colors ${isDragging ? 'border-indigo-500' : ''}`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
+          <div className="flex flex-col items-center justify-center pt-5 pb-6">
+            <ArrowUpTrayIcon className="w-10 h-10 mb-3 text-slate-400" />
+            <p className="mb-2 text-sm text-slate-400">
+              <span className="font-semibold text-indigo-400">Click to upload</span> or drag and drop
+            </p>
+            <p className="text-xs text-slate-500">MP4, MOV, or WEBM (max 500MB)</p>
+          </div>
+          <input
+            id="video-upload"
+            type="file"
+            className="hidden"
+            accept="video/mp4,video/quicktime,video/webm"
+            onChange={(e) => handleFileChange(e.target.files)}
+          />
+        </label>
+
+        {videoFile && (
+          <div className="bg-slate-700/50 p-3 rounded-lg text-left flex items-center space-x-3 animate-slide-in-right">
+            <VideoCameraIcon className="h-6 w-6 text-green-400 flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-slate-200">{videoFile.name}</p>
+              <p className="text-xs text-slate-400">{(videoFile.size / 1024 / 1024).toFixed(2)} MB</p>
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-rose-400 text-sm">{error}</p>}
+
+        <button
+          onClick={handleAnalyze}
+          disabled={!videoFile || isAnalyzing}
+          className="w-full bg-indigo-600 text-white px-8 py-3 rounded-lg font-semibold text-lg hover:bg-indigo-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105"
+        >
+          Analyze My Performance
+        </button>
+      </div>
     </div>
   );
 };
