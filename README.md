@@ -50,6 +50,7 @@ Useful flags:
 * `--skip-audio` – record video only (helpful on devices without a microphone).
 * `--video path/to/file.mp4` – skip live capture and analyze an existing video.
 * `--voice-json voice.json` – include precomputed voice metrics in the report.
+  *Try the bundled* `scripts/sample_voice_metrics.json` *for a quick demo.*
 * `--output report.json` / `--audio-output audio.mp3` – choose output paths.
 
 The script starts a short countdown, records until you press `q`, and then runs
