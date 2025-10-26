@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Aura: AI Public Speaking Coach",
+  "description": "Aura is an AI-powered public speaking coach that provides real-time feedback on your pace, filler words, and posture to help you become a more confident and effective speaker.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
