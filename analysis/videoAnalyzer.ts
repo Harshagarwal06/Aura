@@ -20,31 +20,11 @@ export interface VideoAnalysisOutcome {
 
 const MIN_FRAME_GAP_SEC = 1 / 15; // Sample at most ~15 FPS
 
-function extractLandmarksGroup(result: unknown, key: string): LandmarkLike[] | undefined {
-  if (!result || typeof result !== 'object') {
+function asLandmarks(landmarks?: LandmarkLike[]): LandmarkLike[] | undefined {
+  if (!landmarks || !landmarks.length) {
     return undefined;
   }
-
-  const record = result as Record<string, unknown>;
-  const candidates = record[key];
-  if (Array.isArray(candidates) && candidates.length > 0) {
-    return candidates[0] as LandmarkLike[];
-  }
-  return undefined;
-}
-
-function getPoseLandmarks(result: unknown): LandmarkLike[] | undefined {
-  return (
-    extractLandmarksGroup(result, 'landmarks') ??
-    extractLandmarksGroup(result, 'poseLandmarks')
-  );
-}
-
-function getFaceLandmarks(result: unknown): LandmarkLike[] | undefined {
-  return (
-    extractLandmarksGroup(result, 'faceLandmarks') ??
-    extractLandmarksGroup(result, 'landmarks')
-  );
+  return landmarks;
 }
 
 export async function analyzeVideoFile(file: File, options: VideoAnalysisOptions = {}): Promise<VideoAnalysisOutcome> {
@@ -105,8 +85,8 @@ export async function analyzeVideoFile(file: File, options: VideoAnalysisOptions
       try {
         const poseResult = poseLandmarker.detectForVideo(video, now);
         const faceResult = faceLandmarker.detectForVideo(video, now);
-        const poseLandmarks = getPoseLandmarks(poseResult);
-        const faceLandmarks = getFaceLandmarks(faceResult);
+        const poseLandmarks = asLandmarks(poseResult?.landmarks?.[0] as LandmarkLike[] | undefined);
+        const faceLandmarks = asLandmarks(faceResult?.faceLandmarks?.[0] as LandmarkLike[] | undefined);
         analyzer.processFrame(poseLandmarks, faceLandmarks, width, height, Math.min(timestampSec, duration));
       } catch (error) {
         console.error('Frame analysis error', error);
